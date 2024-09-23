@@ -36,6 +36,8 @@ public:
 	void drawCircle(unsigned char* fm, int i, int j, int nRadius, int nGray);
 	bool isInCircle(int i, int j, int nCenterX, int nCenterY, int nRadius);
 	void InitImage();
+	void centerCircle();
+	void drawCross(double dCenterX, double dCenterY);
 	int m_x1;
 	int m_y1;
 	int m_x2;

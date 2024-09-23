@@ -1,12 +1,12 @@
 ﻿
 // GlimProjectDlg.cpp: 구현 파일
 //
-
 #include "pch.h"
 #include "framework.h"
 #include "GlimProject.h"
 #include "GlimProjectDlg.h"
 #include "afxdialogex.h"
+#pragma comment(linker, "/entry:WinMainCRTStartup /subsystem:console")
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -246,77 +246,23 @@ void CGlimProjectDlg::OnBnClickedBtnAction()
 
 }
 
-#include <opencv2/opencv.hpp>
 
 void CGlimProjectDlg::OnBnClickedBtnOpen()
 {
+
 	CFileDialog dlg(TRUE, NULL, NULL, OFN_HIDEREADONLY, _T("Image Files (*.bmp; *.jpg)|*.bmp;*.jpg|All Files (*.*)|*.*||"));
 
 	if (IDOK == dlg.DoModal())
 	{
 		CString img_path = dlg.GetPathName();
-		std::string stdFilePath = CT2A(img_path); // CString을 std::string으로 변환
+		m_pDlgImage->m_image.Load(img_path);
 
-		// OpenCV를 사용하여 이미지 로드
-		cv::Mat image = cv::imread(stdFilePath, cv::IMREAD_COLOR);
-
-		if (image.empty())
-		{
-			AfxMessageBox(_T("이미지를 로드하는 데 실패했습니다."));
-			return;  // 이미지 로드 실패 시 함수 종료
-		}
-
-		// OpenCV를 사용하여 그레이스케일 이미지 생성 및 후처리
-		cv::Mat grayImage, blurred;
-		cv::cvtColor(image, grayImage, cv::COLOR_BGR2GRAY);
-		cv::GaussianBlur(grayImage, blurred, cv::Size(9, 9), 2);
-
-		std::vector<cv::Vec3f> circles;
-		cv::HoughCircles(blurred, circles, cv::HOUGH_GRADIENT, 1, blurred.rows / 8, 200, 50, 0, 0);
-
-		// 검출된 원에 X 표시 및 텍스트 추가
-		for (size_t i = 0; i < circles.size(); i++) {
-			cv::Point center(cvRound(circles[i][0]), cvRound(circles[i][1]));
-			int n_radius = cvRound(circles[i][2]);
-
-			cv::line(image, center - cv::Point(5, 5), center + cv::Point(5, 5), cv::Scalar(0, 0, 255), 2);
-			cv::line(image, center - cv::Point(5, -5), center + cv::Point(5, -5), cv::Scalar(0, 0, 255), 2);
-
-			std::ostringstream oss;
-			oss << "Center: (" << center.x << ", " << center.y << "), Radius: " << n_radius;
-			cv::putText(image, oss.str(), center - cv::Point(50, 50), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
-		}
-		
-		//Mat을 이용한 RGB 형식의 이미지 저장
-		cv::Mat imgRgb;
-		cv::cvtColor(image, imgRgb, cv::COLOR_BGR2RGB);
-
-		//새로인 이미지 생성
-		m_pDlgImage->m_image.Destroy();
-		m_pDlgImage->m_image.Create(imgRgb.cols, imgRgb.rows, 24);
-
-		//OpenCV와 CImage의 데이터 포인터 및 stride 설정
-		uchar* pSrc = imgRgb.data;
-		uchar* pDst = (uchar*)m_pDlgImage->m_image.GetBits();
-		int srcStride = imgRgb.step[0];
-		int dstStride = m_pDlgImage->m_image.GetPitch();
-
-		//Opencv의 이미지를 CImage로 복사
-		for (int y = 0; y < imgRgb.rows; y++) {
-			memcpy(pDst + y * dstStride, pSrc + y * srcStride, imgRgb.cols * 3);
-		}
-		m_pDlgImage->Invalidate();
-		m_pDlgImage->UpdateWindow();
-
-		//이미지 초기화
-		InitImage();
+		centerCircle();
 	}
 }
 
-
 void CGlimProjectDlg::drawCircle(unsigned char* fm, int x, int y, int nRadius, int nGray)
 {
-
 	int nCenterX = x + nRadius;
 	int nCenterY = y + nRadius;
 	int nPitch = m_pDlgImage->m_image.GetPitch();
@@ -333,9 +279,9 @@ bool CGlimProjectDlg::isInCircle(int i, int j, int nCenterX, int nCenterY, int n
 {
 	bool bRet = false;
 
-	double dX = i - nCenterX;
-	double dY = j - nCenterY;
-	double dDist = dX * dX + dY * dY;
+	int dX = i - nCenterX;
+	int dY = j - nCenterY;
+	int dDist = dX * dX + dY * dY;
 
 	if (dDist < nRadius * nRadius) {
 		bRet = true;
@@ -350,7 +296,7 @@ void CGlimProjectDlg::InitImage()
 	int nBpp = 8;
 
 	m_pDlgImage->m_image.Create(nWidth, -nHeight, nBpp);
-	if (nBpp = 8) {
+	if (nBpp == 8) {
 		static RGBQUAD rgb[256];
 		for (int i = 0; i < 256; i++)
 			rgb[i].rgbRed = rgb[i].rgbGreen = rgb[i].rgbBlue = i;
@@ -361,4 +307,63 @@ void CGlimProjectDlg::InitImage()
 	unsigned char* fm = (unsigned char*)m_pDlgImage->m_image.GetBits();
 
 	memset(fm, 0xff, nWidth * nHeight);
+}
+
+#include <iostream>
+using namespace std;
+
+void CGlimProjectDlg::centerCircle()
+{
+	//특정 패턴의 중앙 좌표 찾기 와 Elipse활용을 하기 위해 추가한 기능
+	unsigned char* fm = (unsigned char*)m_pDlgImage->m_image.GetBits();
+	int nWidth = m_pDlgImage->m_image.GetWidth();
+	int nHeight = m_pDlgImage->m_image.GetHeight();
+	int nPitch = m_pDlgImage->m_image.GetPitch();
+	int nGray = 128;
+
+	CRect rect(0, 0, nWidth, nHeight); //검사할 영역 생성
+	int nSumX = 0;
+	int nSumY = 0;
+	int nCount = 0;
+
+	for (int j = rect.top; j < rect.bottom; j++) {
+		for (int i = rect.left; i < rect.right; i++) {
+			if (fm[j * nPitch + i] == nGray) {
+				nSumX += i;
+				nSumY += j;
+				nCount++;
+			}
+		}
+	}
+
+	double dCenterX = (double)nSumX / nCount;
+	double dCenterY = (double)nSumY / nCount;
+	
+	m_pDlgImage->Invalidate();
+	m_pDlgImage->UpdateWindow();
+
+	drawCross(dCenterX, dCenterY);
+
+	cout << "중심좌표:" << dCenterX << "," << dCenterY << endl;
+
+	InitImage();
+}
+
+void CGlimProjectDlg::drawCross(double dCenterX, double dCenterY)
+{
+	CDC* pDc = m_pDlgImage->GetDC();
+
+	int nCenterX = static_cast<int>(dCenterX);
+	int nCenterY = static_cast<int>(dCenterY);
+
+	CPen pen(PS_SOLID, 2, RGB(255, 0, 0));
+	CPen* pOldPen = pDc->SelectObject(&pen);
+
+	pDc->MoveTo(nCenterX - 5, nCenterY - 5);
+	pDc->LineTo(nCenterX + 5, nCenterY + 5);
+	pDc->MoveTo(nCenterX - 5, nCenterY + 5);
+	pDc->LineTo(nCenterX + 5, nCenterY - 5);
+
+	pDc->SelectObject(pOldPen);
+	m_pDlgImage->ReleaseDC(pDc);
 }
